@@ -1,34 +1,86 @@
 from selenium import webdriver
 import json
 from selenium.webdriver import ChromeOptions
+import xlwt
+import requests
+from bs4 import BeautifulSoup
+import time
+import lxml
 
 headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36",
-    "cookie": "Hm_lvt_699a3d1b7b93f495a71ea0f8664e333e=1591805872,1593099986,1594139388; 7sAp_2132_sid=NFVfbG; 7sAp_2132_noticeTitle=1; 7sAp_2132_saltkey=H0vx4X77; 7sAp_2132_lastvisit=1594137306; 7sAp_2132_sendmail=1; 7sAp_2132_seccode=1317.2ce5cb345f020419d5; 7sAp_2132_ulastactivity=2caaKbv%2BiOXR9B6t2%2B6me%2BLqFpk1euYW7l7NDg51Dp3HCqpOFTD%2F; 7sAp_2132_auth=f8e3tGVMocYWQwGb9BQDJEgkNn7kTnscnx%2FXfUJScQDDKaZkwnrQShcMcb7Hur46SfXDMznVNn55XNu7xdQgK7Fu7Q; 7sAp_2132_lastcheckfeed=24243%7C1594141182; 7sAp_2132_checkfollow=1; 7sAp_2132_lip=183.206.165.195%2C1594140632; 7sAp_2132_connect_is_bind=1; 7sAp_2132_nofavfid=1; 7sAp_2132_onlineusernum=119; 7sAp_2132_checkpm=1; 7sAp_2132_lastact=1594141203%09index.php%09; Hm_lpvt_699a3d1b7b93f495a71ea0f8664e333e=1594141205"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36"
 }
 
-# cookie = str(headers.get('cookie'))
-# cookie_list = cookie.split(';')
-# cookie = {}
-# for item in cookie_list:
-#     ite = item.split('=')
-#     cookie[ite[0]] = ite[1]
-#
-# f1 = open('cookie.txt', 'w')
-# f1.write(json.dumps(cookie))
 
-option = ChromeOptions()
-option.add_experimental_option('excludeSwitches', ['enable-automation'])
-driver = webdriver.Chrome(options=option)
-driver.get("https://www.itjc8.com")
+# 去网站获取get请求
+def request_get_website(url):
+    try:
+        resp = requests.get(url, headers=headers)
+        if resp.status_code == 200:
+            print("get success")
+            resp.encoding = 'utf-8'
+            return resp
+    except requests.RequestException as e:
+        return '请求出现异常：' + str(e)
 
-with open('cookie.txt', 'r', encoding='utf-8') as f:
-    cookie_list = json.loads(f.read())
 
-for c in cookie_list:
-    driver.add_cookie(c)
+# 构造存入的excel
+video_url = xlwt.Workbook(encoding='utf-8', style_compression=0)
+video_sheet = video_url.add_sheet('web前端', cell_overwrite_ok=True)
+video_sheet.write(0, 0, '视频名称')
+video_sheet.write(0, 1, '视频详情链接')
+video_sheet.write(0, 2, '视频访问量')
+video_sheet.write(0, 3, '视频评论量')
+video_sheet.write(0, 4, '视频发布时间')
+video_sheet.write(0, 5, '视频发布时间')
+n = 1
 
-# driver.add_cookie(cookie_list)
 
-driver.refresh()
+def extract_url(bsp, video_type):
+    list = bsp.find(id='threadlisttableid').find_all('th')
+    for item in list:
+        item_a = item.find('a')
+        item_i = item.find(class_='y')
+        if item_a and item_i:
+            if item_a.get('href') != 'javascript:void(0);':
+                item_name = item_a.string
+                item_url = item_a.get('href')
+                item_see = item_i.find(class_='dean_view').string
+                item_reply = item_i.find(class_='dean_reply').string
+                item_release = item_i.find(class_='dean_ftdate').string
+                print(str(item_name) + ' | ' + str(
+                    item_url) + ' | ' + item_see + ' | ' + item_reply + ' | ' + item_release)
+                global n
+                video_sheet.write(n, 0, item_name)
+                video_sheet.write(n, 1, item_url)
+                video_sheet.write(n, 2, item_see)
+                video_sheet.write(n, 3, item_reply)
+                video_sheet.write(n, 4, item_release)
+                video_sheet.write(n, 5, video_type)
+                n = n + 1
 
+
+def main(url, video_type):
+    resp = request_get_website(url)
+    bsp = BeautifulSoup(resp.content, 'lxml')
+    extract_url(bsp, video_type)
+    time.sleep(5)
+
+
+if __name__ == '__main__':
+    url_list = ['https://www.itjc8.com/forum-36-page.html',
+                'https://www.itjc8.com/forum-43-page.html',
+                'https://www.itjc8.com/forum-38-page.html',
+                'https://www.itjc8.com/forum-38-page.html',
+                'https://www.itjc8.com/forum-60-page.html',
+                ]
+    pages_list = [14, 17, 7, 3, 5]
+    name_list = ['web前端.xls', 'java视频教程.xls', 'python视频教程.xls', '微信开发视频教程.xls', '大数据云计算.xls']
+    for index, pa in enumerate(pages_list):
+        for i in range(1, pa):
+            url = url_list[index].split('page')[0] + str(i) + url_list[index].split('page')[1]
+            print("开始{}第{}页数提取{}".format(name_list[index], i, url))
+            main(url, str(pages_list[index]).split('.')[0])
+
+        video_url.save(name_list[index])
+        n = 1
